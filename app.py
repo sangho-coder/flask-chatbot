@@ -1,12 +1,15 @@
 # app.py
 import os
+import logging
+import requests
 from flask import Flask, request, jsonify
-from tasks import query_chatling  # 안전: tasks.py가 Flask를 안 불러서 순환참조 없음
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("app")
 
-CHATLING_API_KEY = os.environ.get("CHATLING_API_KEY")  # 배포 시엔 환경변수로!
-CHATLING_API_URL = "https://api.chatling.ai/v1/respond"  # (직접 호출 대비용, 실제는 태스크 사용)
+CHATLING_API_KEY = os.environ.get("CHATLING_API_KEY")  # Railway Variables에 넣을 것
+CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
 
 @app.get("/")
 def health():
@@ -19,23 +22,38 @@ def kakao_webhook():
     utter = user_req.get("utterance")
     user_id = user_req.get("user", {}).get("id", "unknown")
 
+    if not CHATLING_API_KEY:
+        log.error("CHATLING_API_KEY is not set")
+        return _kakao_text("서버 키 설정이 필요합니다. 잠시 후 다시 시도해 주세요."), 500
+
     if not utter:
-        return jsonify({
-            "version": "2.0",
-            "template": {"outputs":[{"simpleText":{"text":"질문이 비었습니다."}}]}
-        }), 400
+        return _kakao_text("질문을 입력해 주세요."), 400
 
-    # 비동기 태스크 큐에 던지고, 5초 제한 고려해서 빠르게 응답
-    # 필요하면 .get(timeout=…) 으로 동기 대기도 가능 (테스트용)
-    # result = query_chatling.delay(utter, CHATLING_API_KEY, user_id)
+    headers = {
+        "Authorization": f"Bearer {CHATLING_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {"message": utter, "sessionId": user_id}
 
-    # 데모/확인용: 잠깐 동기 호출 (배포전 로컬에서만 사용 권장)
     try:
-        answer = query_chatling.apply(args=[utter, CHATLING_API_KEY, user_id]).get(timeout=9)
-    except Exception:
-        answer = "일시적 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        # 5초 룰 대비: 3.5초 정도 타임아웃
+        res = requests.post(CHATLING_API_URL, json=payload, headers=headers, timeout=3.5)
+        if res.ok:
+            answer = res.json().get("answer", "답변을 찾기 어려워요.")
+        else:
+            log.warning("Chatling non-200: %s %s", res.status_code, res.text[:200])
+            answer = "잠시 후 다시 시도해 주세요."
+    except requests.Timeout:
+        # 5초 전에 바로 응답
+        log.warning("Chatling timeout → fallback")
+        answer = "질문을 접수했어요. 조금 뒤 다시 말씀드릴게요."
 
+    return _kakao_text(answer)
+
+def _kakao_text(text: str):
     return jsonify({
         "version": "2.0",
-        "template": {"outputs":[{"simpleText":{"text": answer}}]}
+        "template": {
+            "outputs": [{"simpleText": {"text": text}}]
+        }
     })
