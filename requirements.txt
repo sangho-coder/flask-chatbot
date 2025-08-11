@@ -1,5 +1,4 @@
 Flask==2.3.2
+Werkzeug==2.3.7
 requests
-celery==5.3.6
-redis
 gunicorn
