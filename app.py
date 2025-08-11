@@ -1,101 +1,80 @@
+import logging
 from flask import Flask, request, jsonify
 import requests
-import logging
 
-# ----- 로깅 설정 -----
+# --- Logging (최상위에서 설정만) ---
 logging.basicConfig(level=logging.INFO)
-logging.info(">>> importing app.py start")
+log = logging.getLogger("app")
+log.info(">>> importing app.py")
 
-# ----- Flask 앱 생성 -----
+# --- Flask app 객체만 생성 ---
 app = Flask(__name__)
-logging.info(">>> Flask app created")
+log.info(">>> Flask app created")
 
-try:
-    logging.info(">>> Setting up API keys and routes")
+# --- 상수만 선언(실행 로직 금지) ---
+CHATLING_API_KEY = "3CDuWbTMau59Gmmm82KR5Y5nSxWHkzyAnGVFC41FCYF2Tb2GHNr9ud1bGc4jrVbc"
+CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
 
-    CHATLING_API_KEY = "3CDuWbTMau59Gmmm82KR5Y5nSxWHkzyAnGVFC41FCYF2Tb2GHNr9ud1bGc4jrVbc"
-    CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
+# --- Health endpoints (Railway 헬스체크 용) ---
+@app.get("/")
+def root_health():
+    return "OK", 200
 
-    # ----- 헬스체크 -----
-    @app.route("/", methods=["GET"])
-    def health_check():
-        return "OK", 200
+@app.get("/healthz")
+def healthz():
+    return jsonify(status="ok"), 200
 
-    # ----- 카카오 Webhook -----
-    @app.route("/webhook", methods=["POST"])
-    def kakao_webhook():
-        try:
-            body = request.get_json(force=True, silent=True) or {}
-            logging.info(f"Webhook body: {body}")
+# --- Kakao Webhook ---
+@app.post("/webhook")
+def kakao_webhook():
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        log.info("Webhook body: %s", body)
 
-            user_req = body.get("userRequest") or {}
-            utter = user_req.get("utterance")
-            user_id = (user_req.get("user") or {}).get("id")
+        user_req = body.get("userRequest") or {}
+        utter = user_req.get("utterance")
+        user_id = (user_req.get("user") or {}).get("id")
 
-            if not utter or not user_id:
-                logging.error("Invalid payload")
-                return jsonify({
-                    "version": "2.0",
-                    "template": {
-                        "outputs": [
-                            {"simpleText": {"text": "요청 형식이 올바르지 않습니다."}}
-                        ]
-                    }
-                }), 200
-
-            headers = {
-                "Authorization": f"Bearer {CHATLING_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "message": utter,
-                "sessionId": user_id
-            }
-
-            answer = None
-            try:
-                r = requests.post(
-                    CHATLING_API_URL,
-                    json=payload,
-                    headers=headers,
-                    timeout=2.5
-                )
-                if r.ok:
-                    data = r.json()
-                    answer = data.get("answer")
-                else:
-                    logging.error(f"Chatling error {r.status_code}: {r.text}")
-            except Exception as e:
-                logging.exception(f"Chatling request failed: {e}")
-
-            kakao_response = {
-                "version": "2.0",
-                "template": {
-                    "outputs": [
-                        {"simpleText": {
-                            "text": answer or "현재 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요."
-                        }}
-                    ]
-                }
-            }
-            return jsonify(kakao_response), 200
-
-        except Exception as e:
-            logging.exception(f"webhook handler failed: {e}")
+        if not utter or not user_id:
+            log.error("Invalid payload")
             return jsonify({
                 "version": "2.0",
-                "template": {
-                    "outputs": [
-                        {"simpleText": {"text": "서버 내부 오류가 발생했습니다."}}
-                    ]
-                }
+                "template": {"outputs": [
+                    {"simpleText": {"text": "요청 형식이 올바르지 않습니다."}}
+                ]}
             }), 200
 
-    logging.info(">>> All routes set up successfully")
+        headers = {
+            "Authorization": f"Bearer {CHATLING_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {"message": utter, "sessionId": user_id}
 
-except Exception as e:
-    logging.error(f"Failed to set up app routes or keys: {e}", exc_info=True)
+        answer = None
+        try:
+            r = requests.post(CHATLING_API_URL, json=payload, headers=headers, timeout=2.5)
+            if r.ok:
+                answer = (r.json() or {}).get("answer")
+            else:
+                log.error("Chatling error %s: %s", r.status_code, r.text)
+        except Exception as e:
+            log.exception("Chatling request failed: %s", e)
 
-# ----- 로컬 실행 시 -----
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+        return jsonify({
+            "version": "2.0",
+            "template": {"outputs": [
+                {"simpleText": {"text": answer or "현재 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요."}}
+            ]}
+        }), 200
+
+    except Exception as e:
+        log.exception("Webhook handler failed: %s", e)
+        return jsonify({
+            "version": "2.0",
+            "template": {"outputs": [
+                {"simpleText": {"text": "서버 내부 오류가 발생했습니다."}}
+            ]}
+        }), 200
+
+# ⚠️ 로컬 실행부 없음 (Railway는 gunicorn이 기동)
+# if __name__ == "__main__": app.run(...)
