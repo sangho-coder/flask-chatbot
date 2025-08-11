@@ -1,6 +1,7 @@
 import logging
 from flask import Flask, request, jsonify
 import requests
+import os  # 추가된 부분
 
 # ----- Logging (stdout로 간단히만) -----
 logging.basicConfig(level=logging.INFO)
@@ -12,7 +13,7 @@ app = Flask(__name__)
 log.info(">>> Flask app created")
 
 # ----- Chatling -----
-CHATLING_API_KEY = "3CDuWbTMau59Gmmm82KR5Y5nSxWHkzyAnGVFC41FCYF2Tb2GHNr9ud1bGc4jrVbc"
+CHATLING_API_KEY = os.environ.get("CHATLING_API_KEY", "3CDuWbTMau59Gmmm82KR5Y5nSxWHkzyAnGVFC41FCYF2Tb2GHNr9ud1bGc4jrVbc")  # 수정된 부분
 CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
 
 # ----- Health Endpoints -----
@@ -90,6 +91,5 @@ def kakao_webhook():
 
 # ⚠ Railway/Render 등에서는 gunicorn이 기동합니다.
 # 로컬 테스트용이 필요하면 아래 주석 해제:
-# if __name__ == "__main__":
-#     import os
-#     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
