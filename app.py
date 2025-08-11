@@ -1,66 +1,56 @@
+import logging, sys
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+log = logging.getLogger("app")
+
+log.info(">>> importing app.py start")
+
 from flask import Flask, request, jsonify
 import requests
 
-app = Flask(__name__)
+log.info(">>> imports OK")
 
-# Chatling API Key (하드코딩)
-CHATLING_API_KEY = "3CDuWbTMau59Gmmm82KR5Y5nSxWHkzyAnGVFC41FCYF2Tb2GHNr9ud1bGc4jrVbc"
+app = Flask(__name__)
+log.info(">>> Flask app created")
+
+CHATLING_API_KEY = "3CDuWbTMau59Gmmm82KR5Y5nSxWHkzyAnGVFC41FCYF2Tb2GHNr9ud1bGc4jrVbc"          # 그대로 OK
 CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
 
 @app.route("/", methods=["GET"])
 def health_check():
     return "OK", 200
 
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify(status="ok"), 200
+
 @app.route("/webhook", methods=["POST"])
 def kakao_webhook():
     try:
-        body = request.get_json()
-        user_msg = body['userRequest']['utterance']
+        body = request.get_json(silent=True)
+        if not body:
+            log.error("No JSON body. headers=%s", dict(request.headers))
+            return jsonify({"version":"2.0","template":{"outputs":[{"simpleText":{"text":"요청 본문이 비었습니다."}}]}}), 400
 
-        # Chatling API 호출
-        headers = {
-            "Authorization": f"Bearer {CHATLING_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "message": user_msg,
-            "sessionId": body['userRequest']['user']['id']  # 사용자별 세션 유지
-        }
-        chatling_res = requests.post(CHATLING_API_URL, json=payload, headers=headers)
+        # 방어적으로 꺼내기
+        user_req = body.get("userRequest", {})
+        utter = user_req.get("utterance")
+        user_id = user_req.get("user", {}).get("id")
+        if not utter or not user_id:
+            log.error("Invalid payload: %s", body)
+            return jsonify({"version":"2.0","template":{"outputs":[{"simpleText":{"text":"요청 형식이 올바르지 않습니다."}}]}}), 400
 
-        if chatling_res.status_code == 200:
-            chatling_answer = chatling_res.json().get("answer", "죄송합니다, 답변을 찾을 수 없습니다.")
+        headers = {"Authorization": f"Bearer {CHATLING_API_KEY}", "Content-Type": "application/json"}
+        payload = {"message": utter, "sessionId": user_id}
+
+        r = requests.post(CHATLING_API_URL, json=payload, headers=headers, timeout=10)
+        if r.status_code == 200:
+            answer = r.json().get("answer", "죄송합니다, 답변을 찾을 수 없습니다.")
         else:
-            chatling_answer = "죄송합니다, 서버와 연결이 원활하지 않습니다."
+            log.error("Chatling error %s: %s", r.status_code, r.text)
+            answer = "죄송합니다, 서버와 연결이 원활하지 않습니다."
 
-        # 카카오톡 응답 포맷
-        kakao_response = {
-            "version": "2.0",
-            "template": {
-                "outputs": [
-                    {
-                        "simpleText": {
-                            "text": chatling_answer
-                        }
-                    }
-                ]
-            }
-        }
-        return jsonify(kakao_response)
+        return jsonify({"version":"2.0","template":{"outputs":[{"simpleText":{"text": answer}}]}})
 
-    except Exception as e:
-        return jsonify({
-            "version": "2.0",
-            "template": {
-                "outputs": [
-                    {
-                        "simpleText": {
-                            "text": f"에러 발생: {str(e)}"
-                        }
-                    }
-                ]
-            }
-        })
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    except Exception:
+        log.exception("webhook handler failed")
+        return jsonify({"version":"2.0","template":{"outputs":[{"simpleText":{"text":"서버 내부 오류가 발생했습니다."}}]}}), 500
