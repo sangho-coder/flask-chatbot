@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime
-from flask import Flask, request, jsonify # requests 모듈은 현재 사용하지 않으므로 제거
+from flask import Flask, request, jsonify
 
 # ----- 로깅 설정 (Railway에서 확인 가능하도록) -----
 logging.basicConfig(
@@ -16,7 +16,6 @@ app = Flask(__name__)
 log.info("Flask 앱 초기화 완료")
 
 # ----- 반드시 필요한 환경 변수만 최상위에 유지 -----
-# Railway에서 'CHATLING_API_KEY' 환경 변수를 설정해야 합니다.
 CHATLING_API_KEY = os.getenv("CHATLING_API_KEY")
 
 # Chatling API URL (나중에 API 호출 시 사용)
@@ -32,24 +31,22 @@ def health_check():
         status="healthy",
         message="Service is running",
         timestamp=datetime.utcnow().isoformat(),
-        env_loaded=bool(CHATLING_API_KEY)  # 환경 변수 로드 확인용
+        env_loaded=bool(CHATLING_API_KEY)
     ), 200
 
-# ----- 카카오 웹훅 (가장 기본적인 응답으로 단순화) -----
+# ----- 카카오 웹훅 (아주 간단한 응답으로 즉시 반환) -----
 @app.post("/webhook")
 def kakao_webhook():
     """카카오톡 채널 웹훅 요청을 처리하는 엔드포인트"""
-    # 요청 수신 로그 (실제 데이터 처리 전)
-    log.info("Kakao Webhook 요청 수신 (기본 테스트 모드)")
-
-    # 카카오톡 포맷에 맞춘 아주 간단한 응답 즉시 반환 (오류 발생 여지 최소화)
+    log.info("Kakao Webhook 요청 수신 (최소화된 테스트 모드)")
+    # 요청 내용을 파싱하지 않고 무조건 고정된 응답을 즉시 반환
     return jsonify({
         "version": "2.0",
         "template": {
             "outputs": [
                 {
                     "simpleText": {
-                        "text": "웹훅 테스트: 정상 응답 중입니다."
+                        "text": "웹훅 테스트: 최소화된 응답입니다."
                     }
                 }
             ]
@@ -68,6 +65,6 @@ def _kakao_response(text, status=200):
 
 # ----- 메인 실행 (Gunicorn 사용 시 불필요하지만 로컬 테스트용으로 유지) -----
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8080))  # Railway 동적 포트 사용
+    port = int(os.getenv("PORT", 8080))
     log.info(f"Flask 앱 로컬 실행 시작 (http://0.0.0.0:{port})")
     app.run(host="0.0.0.0", port=port)
