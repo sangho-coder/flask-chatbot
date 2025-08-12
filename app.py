@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime
-from flask import Flask, request, jsonify # requests 모듈은 현재 사용하지 않으므로 제거
+from flask import Flask, request, jsonify # requests 모듈은 현재 주석 처리된 상태
 
 # ----- 로깅 설정 (Railway에서 확인 가능하도록) -----
 logging.basicConfig(
@@ -23,8 +23,8 @@ CHATLING_API_KEY = os.getenv("CHATLING_API_KEY")
 CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
 
 # ----- 헬스체크 (Railway 필수) -----
-@app.route("/")
-@app.route("/health")
+@app.route("/", methods=["GET"]) # 이 줄과 아래 함수 전체가 주석 처리되어 있지 않은지 확인
+@app.route("/health", methods=["GET"]) # /health 경로도 추가 (선택 사항이지만 권장)
 def health_check():
     """Railway Health Check용 엔드포인트"""
     log.info("Health Check 요청 수신")
