@@ -14,15 +14,17 @@ log = logging.getLogger("KakaoChatbot")
 
 # ----- Flask 앱 -----
 app = Flask(__name__)
-# 과도한 본문 방지(선택): 음성/파일이 webhook로 직접 오지 않게
+# 과도한 본문 방지(선택): 큰 파일이 바로 /webhook으로 들어오지 않도록
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
-log.info("Flask 앱 초기화 완료")
 
-# ----- 환경 변수 -----
+log.info("Flask 앱 초기화 완료")
+log.info("ENV PORT=%s", os.getenv("PORT"))
+
+# ----- (선택) 환경 변수 -----
 CHATLING_API_KEY = os.getenv("CHATLING_API_KEY")
 CHATLING_API_URL = "https://api.chatling.ai/v1/respond"
 
-# ----- request 타이밍 로깅(문제 파악용) -----
+# ----- 요청 시간 로깅 -----
 @app.before_request
 def _start_timer():
     g._t0 = time.time()
@@ -38,23 +40,29 @@ def _after(resp):
         pass
     return resp
 
+# ----- 에러 핸들러(응답은 항상 안전하게 반환) -----
+@app.errorhandler(Exception)
+def _on_error(e):
+    log.exception("Unhandled error on %s", request.path)
+    # 웹훅 요청에서도 500로 죽지 않게 보호
+    return jsonify(error="server error"), 200
+
 # ----- 헬스체크 -----
 @app.get("/")
 @app.get("/health")
 @app.get("/healthz")
 def health_check():
-    log.info("Health Check 요청 수신")
     return jsonify(
         status="healthy",
         message="Service is running",
         timestamp=datetime.utcnow().isoformat(),
-        env_loaded=bool(CHATLING_API_KEY)
+        env_loaded=bool(CHATLING_API_KEY),
     ), 200
 
-# ----- 카카오 웹훅: 즉시 200 OK -----
+# ----- 웹훅: 어떤 요청이 와도 즉시 200 -----
 @app.route("/webhook", methods=["POST", "GET", "HEAD"])
 def kakao_webhook():
-    # 어떤 본문도 파싱하지 않고, 즉시 200 반환
+    # 요청 파싱 없이 로그만 남기고 즉시 응답
     try:
         ua = request.headers.get("User-Agent", "-")
         clen = request.headers.get("Content-Length", "0")
@@ -62,28 +70,19 @@ def kakao_webhook():
     except Exception:
         pass
 
-    # HEAD/GET 요청이 올 수도 있으니 간단 응답
+    # GET/HEAD로 헬스/프리플라이트성 요청이 들어올 수 있음
     if request.method in ("GET", "HEAD"):
         return ("ok", 200)
 
-    # 카카오 v2.0 형식의 최소 응답(POST일 때)
+    # POST일 때는 카카오 v2.0 최소 응답으로 200 반환
     return jsonify({
         "version": "2.0",
         "template": {
             "outputs": [
-                {
-                    "simpleText": {"text": "웹훅 테스트: 최소화된 응답입니다."}
-                }
+                {"simpleText": {"text": "웹훅 테스트: 최소화된 응답입니다."}}
             ]
         }
     }), 200
-
-# ----- (참고) 카카오 응답 헬퍼 -----
-def _kakao_response(text, status=200):
-    return jsonify({
-        "version": "2.0",
-        "template": {"outputs": [{"simpleText": {"text": text}}]}
-    }), status
 
 # ----- 로컬 실행용 -----
 if __name__ == "__main__":
