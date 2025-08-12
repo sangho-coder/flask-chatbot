@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime
-from flask import Flask, request, jsonify # requests 모듈은 현재 주석 처리된 상태
+from flask import Flask, request, jsonify # requests 모듈은 현재 사용하지 않으므로 제거
 
 # ----- 로깅 설정 (Railway에서 확인 가능하도록) -----
 logging.basicConfig(
@@ -35,56 +35,28 @@ def health_check():
         env_loaded=bool(CHATLING_API_KEY)  # 환경 변수 로드 확인용
     ), 200
 
-# ----- 카카오 웹훅 (기본 구조만 유지) -----
+# ----- 카카오 웹훅 (가장 기본적인 응답으로 단순화) -----
 @app.post("/webhook")
 def kakao_webhook():
-    try:
-        # 필수 파라미터 검증
-        data = request.get_json()
-        if not data:
-            log.error("빈 요청 수신")
-            return _kakao_response("올바른 요청이 아닙니다"), 400
+    """카카오톡 채널 웹훅 요청을 처리하는 엔드포인트"""
+    # 요청 수신 로그 (실제 데이터 처리 전)
+    log.info("Kakao Webhook 요청 수신 (기본 테스트 모드)")
 
-        user_req = data.get("userRequest", {})
-        utterance = user_req.get("utterance", "").strip()
-        
-        if not utterance:
-            return _kakao_response("질문을 입력해 주세요"), 400
+    # 카카오톡 포맷에 맞춘 아주 간단한 응답 즉시 반환 (오류 발생 여지 최소화)
+    return jsonify({
+        "version": "2.0",
+        "template": {
+            "outputs": [
+                {
+                    "simpleText": {
+                        "text": "웹훅 테스트: 정상 응답 중입니다."
+                    }
+                }
+            ]
+        }
+    })
 
-        # TODO: Chatling API 연동 (아래 코드 주석 해제하여 사용)
-        # import requests # requests 모듈은 이 함수 내부에서 사용될 때만 가져오는 것이 효율적입니다.
-        # if not CHATLING_API_KEY:
-        #     log.error("CHATLING_API_KEY 환경 변수가 설정되지 않았습니다.")
-        #     return _kakao_response("챗봇 설정 오류: API 키가 누락되었습니다.")
-        
-        # headers = {
-        #     "Authorization": f"Bearer {CHATLING_API_KEY}",
-        #     "Content-Type": "application/json",
-        # }
-        # payload = {
-        #     "messages": [{"role": "user", "content": utterance}]
-        # }
-        
-        # try:
-        #     response = requests.post(CHATLING_API_URL, headers=headers, json=payload)
-        #     response.raise_for_status() # HTTP 오류 발생 시 예외 발생
-        #     chatling_response = response.json()
-        #     ai_response = chatling_response["choices"][0]["message"]["content"]
-        # except requests.exceptions.RequestException as e:
-        #     log.exception(f"Chatling AI API 호출 오류: {e}")
-        #     ai_response = "챗봇 응답을 가져오는 데 실패했습니다."
-        
-        # return _kakao_response(ai_response)
-
-        # 현재는 테스트 모드로 동작
-        log.info(f"사용자 발화 수신 (테스트 모드): {utterance}")
-        return _kakao_response("테스트 모드: 정상 작동 중")
-
-    except Exception as e:
-        log.exception("처리 중 오류 발생: %s", e)
-        return _kakao_response("일시적인 오류가 발생했습니다"), 500
-
-# ----- 응답 포맷터 -----
+# ----- 응답 포맷터 (더 이상 사용되지 않지만 혹시 몰라 유지) -----
 def _kakao_response(text, status=200):
     """카카오 v2.0 형식 응답을 생성합니다."""
     return jsonify({
