@@ -1,1 +1,2 @@
-web: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 120 --access-logfile - --error-logfile - --capture-output --log-level debug
+# Railway Procfile 또는 커맨드
+web: gunicorn -w 2 -b 0.0.0.0:$PORT app:app --timeout 120 --log-level debug --access-logfile -
