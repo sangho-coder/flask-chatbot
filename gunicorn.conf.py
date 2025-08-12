@@ -1,5 +1,7 @@
+# gunicorn.conf.py
+import os
 bind = f"0.0.0.0:{os.getenv('PORT', '8080')}"
-workers = 1  # Railway 무료 티어 안정성 보장
+workers = 1
 timeout = 120
 accesslog = "-"
 errorlog = "-"
